@@ -1,5 +1,7 @@
 # FITS Viewer
 
+[Open FITS Viewer](https://cylammarco.github.io/fitsjs-viewer/)
+
 Browser-native FITS image and table application for GitHub Pages, built on [FITS.js](https://github.com/cylammarco/fitsjs). FITS.js is an explicit runtime dependency; the viewer does not carry a private parser copy.
 
 ## Features
