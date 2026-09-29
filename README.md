@@ -1,0 +1,46 @@
+# FITS Viewer
+
+Browser-native FITS image and table application for GitHub Pages, built on [FITS.js](https://github.com/cylammarco/fitsjs). FITS.js is an explicit runtime dependency; the viewer does not carry a private parser copy.
+
+## Features
+
+- Drag/drop or choose local FITS files with multi-HDU navigation and raw header cards.
+- Image/cube viewer with pan, zoom, frame selection, rotation, flips, crosshair pixel/WCS probe, box/circle regions, PNG export, color maps, linear/log/sqrt/asinh stretches, percentile levels, histogram, and basic circular-aperture photometry with a median sky annulus. Exposure time and magnitude zeropoint are read from common FITS header keywords and remain editable.
+- Binary and ASCII table preview with Plotly scatter plots, 1D histograms, 2D histograms, linear/log/symlog axes, optional scatter coloring, and configurable sample limits.
+- Light/dark theme toggle; visual language follows the FITS.js inspector teal/coral palette.
+
+## Dependency
+
+FITS Viewer imports `FitsFile` from the `fitsjs` package. Its dependency is pinned to a FITS.js GitHub source revision until the current ESM release is published to npm. Install normally with `npm install`; no sibling checkout or SSH configuration is required.
+
+## Local Development
+
+```sh
+npm install
+npm run dev
+```
+
+Build the static site:
+
+```sh
+npm run build
+```
+
+## GitHub Pages
+
+This repository is initialized locally at `~/git/fitsjs-viewer`. Create an empty GitHub repository, add it as `origin`, commit, and push `main`:
+
+```sh
+git remote add origin https://github.com/<owner>/fitsjs-viewer.git
+git add .
+git commit -m "Initial FITS Viewer"
+git push -u origin main
+```
+
+In GitHub repository settings, enable **Pages** with **GitHub Actions** as the source. The workflow in `.github/workflows/deploy-pages.yml` installs dependencies, builds Vite with relative asset paths, and deploys `dist`.
+
+## Limits
+
+- The FITS parser supports standard images, cubes, binary tables, and ASCII tables. Compressed images and gzip-wrapped FITS files are not decoded in this build.
+- Table plotting samples at most 25,000 rows to keep browser interaction responsive.
+- Plotly loads only when a table HDU is opened.
