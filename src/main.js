@@ -139,7 +139,7 @@ app.innerHTML = `
         </section>
 
         <section id="table-workspace" class="table-workspace" hidden>
-          <div class="table-summary"><div><p class="eyebrow">Table preview</p><strong id="table-meta"></strong></div><div class="plot-sample-actions"><output id="plot-sample-status" class="sample-status"></output><button id="load-more-plot-rows" class="inline-button compact-button" type="button">Load more for Plotly</button></div></div>
+          <div class="table-summary"><div><p class="eyebrow">Table preview</p><strong id="table-meta"></strong></div><div class="plot-sample-actions"><output id="plot-sample-status" class="sample-status"></output><button id="load-more-plot-rows" class="inline-button compact-button" type="button">Load more for Plotly</button><button id="load-all-plot-rows" class="inline-button compact-button danger-button" type="button">Load all plot rows…</button></div></div>
           <div class="plot-workspace">
             <div class="plot-controls" aria-label="Plot controls">
               <label class="control-field" for="plot-type">Plot<select id="plot-type"><option value="scatter">Scatter</option><option value="histogram">Histogram 1D</option><option value="histogram2d">Histogram 2D</option></select></label>
@@ -174,7 +174,7 @@ const elementIds = {
 };
 
 const elements = Object.fromEntries([
-  "fileInput", "fileStatus", "openFile", "refreshViewer", "themeToggle", "themeIcon", "dropZone", "workbench", "hduCount", "hduList", "detailKind", "detailTitle", "detailMeta", "viewerStatus", "imageWorkspace", "tableWorkspace", "imageCanvas", "histogramCanvas", "probeReadout", "zoomReadout", "frameInput", "frameTotal", "palette", "stretch", "invert", "imageBinning", "imageFilter", "imageFilterSize", "applyImageProcessing", "blackLevel", "whiteLevel", "percentileLow", "percentileHigh", "levelPreset", "autoLevels", "photometryEnabled", "photometryControls", "photometryX", "photometryY", "photometryUsePointer", "photometryRadius", "photometryAnnulusInner", "photometryAnnulusOuter", "photometryHeaderValues", "photometryExposure", "photometryZeropoint", "photometryUseHeader", "measurePhotometry", "photometryResult", "regionReadout", "centroidAllCircles", "circleTableBody", "circleContextMenu", "imageMeta", "tableMeta", "tableLoadStatus", "loadNextTableChunk", "loadAllTableRows", "plotSampleStatus", "loadMorePlotRows", "plotType", "plotSeries", "addPlotSeries", "plotXScale", "plotYScale", "plotYScaleField", "plotColorMap", "plotColorMapField", "symlogField", "symlogThreshold", "renderPlot", "plotContainer", "tableHead", "tableBody", "headerCards"
+  "fileInput", "fileStatus", "openFile", "refreshViewer", "themeToggle", "themeIcon", "dropZone", "workbench", "hduCount", "hduList", "detailKind", "detailTitle", "detailMeta", "viewerStatus", "imageWorkspace", "tableWorkspace", "imageCanvas", "histogramCanvas", "probeReadout", "zoomReadout", "frameInput", "frameTotal", "palette", "stretch", "invert", "imageBinning", "imageFilter", "imageFilterSize", "applyImageProcessing", "blackLevel", "whiteLevel", "percentileLow", "percentileHigh", "levelPreset", "autoLevels", "photometryEnabled", "photometryControls", "photometryX", "photometryY", "photometryUsePointer", "photometryRadius", "photometryAnnulusInner", "photometryAnnulusOuter", "photometryHeaderValues", "photometryExposure", "photometryZeropoint", "photometryUseHeader", "measurePhotometry", "photometryResult", "regionReadout", "centroidAllCircles", "circleTableBody", "circleContextMenu", "imageMeta", "tableMeta", "tableLoadStatus", "loadNextTableChunk", "loadAllTableRows", "plotSampleStatus", "loadMorePlotRows", "loadAllPlotRows", "plotType", "plotSeries", "addPlotSeries", "plotXScale", "plotYScale", "plotYScaleField", "plotColorMap", "plotColorMapField", "symlogField", "symlogThreshold", "renderPlot", "plotContainer", "tableHead", "tableBody", "headerCards"
 ].map((name) => [name, document.querySelector(`#${elementIds[name] ?? name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`)]));
 
 const state = { fits: null, file: null, selectedIndex: 0, frame: 0, imageHdu: null, table: null, tableRowsLoaded: 0, circleMenuIndex: null, photometryHeader: { exposure: null, zeroPoint: null } };
@@ -555,16 +555,22 @@ function populatePlotControls(model) {
 function updatePlotLoadControls(model = plotter.getModel()) {
   const remaining = Math.max(0, model.totalRows - model.loadedRows);
   elements.plotSampleStatus.textContent = `${model.loadedRows.toLocaleString()} of ${model.totalRows.toLocaleString()} rows sampled for Plotly`;
-  elements.loadMorePlotRows.disabled = remaining === 0 || model.numericColumnCount === 0;
+  const disabled = remaining === 0 || model.numericColumnCount === 0;
+  elements.loadMorePlotRows.disabled = disabled;
+  elements.loadAllPlotRows.disabled = disabled;
   elements.loadMorePlotRows.textContent = remaining
     ? `Load next ${Math.min(MAX_PLOT_ROWS, remaining).toLocaleString()} plot rows`
     : "All rows loaded for Plotly";
+  elements.loadAllPlotRows.textContent = remaining
+    ? `Load all ${remaining.toLocaleString()} plot rows…`
+    : "All plot rows loaded";
 }
 
-async function loadMorePlotRows() {
+async function loadPlotRows(count = MAX_PLOT_ROWS) {
   elements.loadMorePlotRows.disabled = true;
+  elements.loadAllPlotRows.disabled = true;
   try {
-    const model = await plotter.loadMoreRows();
+    const model = await plotter.loadMoreRows(count);
     const availableColumns = model.columns.map((column) => column.name).join("\n");
     const selectableColumns = [...elements.plotSeries.querySelector(".series-x")?.options ?? []].map((option) => option.value).join("\n");
     if (availableColumns !== selectableColumns) populatePlotControls(model);
@@ -574,8 +580,18 @@ async function loadMorePlotRows() {
     elements.plotSampleStatus.textContent = error.message;
   } finally {
     const model = plotter.getModel();
-    elements.loadMorePlotRows.disabled = model.loadedRows >= model.totalRows || model.numericColumnCount === 0;
+    const disabled = model.loadedRows >= model.totalRows || model.numericColumnCount === 0;
+    elements.loadMorePlotRows.disabled = disabled;
+    elements.loadAllPlotRows.disabled = disabled;
   }
+}
+
+async function loadAllPlotRows() {
+  const model = plotter.getModel();
+  const remaining = model.totalRows - model.loadedRows;
+  if (remaining <= 0) return;
+  const confirmed = window.confirm(`Load all ${remaining.toLocaleString()} remaining rows into Plotly? This can exhaust memory and crash or freeze the browser for a large FITS table.`);
+  if (confirmed) await loadPlotRows(remaining);
 }
 
 function buildSeriesSelect(label, className, columns, includeNone = false) {
@@ -800,7 +816,8 @@ elements.frameInput.addEventListener("change", async () => {
 }));
 elements.addPlotSeries.addEventListener("click", () => { addPlotSeries(); renderPlot(); });
 elements.renderPlot.addEventListener("click", renderPlot);
-elements.loadMorePlotRows.addEventListener("click", loadMorePlotRows);
+elements.loadMorePlotRows.addEventListener("click", () => loadPlotRows());
+elements.loadAllPlotRows.addEventListener("click", loadAllPlotRows);
 document.addEventListener("keydown", (event) => {
   if (!state.imageHdu || event.target.matches("input, select, textarea")) return;
   if (event.key === "+" || event.key === "=") viewer.zoomBy(1.3);
