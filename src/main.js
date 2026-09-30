@@ -10,12 +10,11 @@ const app = document.querySelector("#app");
 app.innerHTML = `
   <div class="viewer-shell">
     <header class="topbar">
-      <div class="brand-lockup" aria-label="FITS Viewer">
-        <span class="brand-mark">FITS</span><span class="brand-name">Viewer</span>
-      </div>
+      <div class="brand-lockup" aria-label="FITS Viewer">FITS Viewer</div>
       <output id="file-status" class="file-status" aria-live="polite">No file loaded</output>
       <div class="topbar-actions">
         <button id="open-file" class="command-button" type="button"><span data-icon="upload"></span><span>Open FITS</span></button>
+        <button id="refresh-viewer" class="command-button" type="button" aria-label="Refresh viewer with default settings" title="Reload the current FITS file with default settings" disabled><span data-icon="reset"></span><span>Refresh</span></button>
         <button id="theme-toggle" class="icon-button" type="button" aria-label="Switch to dark mode" title="Switch to dark mode"><span id="theme-icon" data-icon="moon"></span></button>
         <input id="file-input" type="file" accept=".fit,.fits,.fts,application/fits" hidden>
       </div>
@@ -175,7 +174,7 @@ const elementIds = {
 };
 
 const elements = Object.fromEntries([
-  "fileInput", "fileStatus", "openFile", "themeToggle", "themeIcon", "dropZone", "workbench", "hduCount", "hduList", "detailKind", "detailTitle", "detailMeta", "viewerStatus", "imageWorkspace", "tableWorkspace", "imageCanvas", "histogramCanvas", "probeReadout", "zoomReadout", "frameInput", "frameTotal", "palette", "stretch", "invert", "imageBinning", "imageFilter", "imageFilterSize", "applyImageProcessing", "blackLevel", "whiteLevel", "percentileLow", "percentileHigh", "levelPreset", "autoLevels", "photometryEnabled", "photometryControls", "photometryX", "photometryY", "photometryUsePointer", "photometryRadius", "photometryAnnulusInner", "photometryAnnulusOuter", "photometryHeaderValues", "photometryExposure", "photometryZeropoint", "photometryUseHeader", "measurePhotometry", "photometryResult", "regionReadout", "centroidAllCircles", "circleTableBody", "circleContextMenu", "imageMeta", "tableMeta", "tableLoadStatus", "loadNextTableChunk", "loadAllTableRows", "plotSampleStatus", "loadMorePlotRows", "plotType", "plotSeries", "addPlotSeries", "plotXScale", "plotYScale", "plotYScaleField", "plotColorMap", "plotColorMapField", "symlogField", "symlogThreshold", "renderPlot", "plotContainer", "tableHead", "tableBody", "headerCards"
+  "fileInput", "fileStatus", "openFile", "refreshViewer", "themeToggle", "themeIcon", "dropZone", "workbench", "hduCount", "hduList", "detailKind", "detailTitle", "detailMeta", "viewerStatus", "imageWorkspace", "tableWorkspace", "imageCanvas", "histogramCanvas", "probeReadout", "zoomReadout", "frameInput", "frameTotal", "palette", "stretch", "invert", "imageBinning", "imageFilter", "imageFilterSize", "applyImageProcessing", "blackLevel", "whiteLevel", "percentileLow", "percentileHigh", "levelPreset", "autoLevels", "photometryEnabled", "photometryControls", "photometryX", "photometryY", "photometryUsePointer", "photometryRadius", "photometryAnnulusInner", "photometryAnnulusOuter", "photometryHeaderValues", "photometryExposure", "photometryZeropoint", "photometryUseHeader", "measurePhotometry", "photometryResult", "regionReadout", "centroidAllCircles", "circleTableBody", "circleContextMenu", "imageMeta", "tableMeta", "tableLoadStatus", "loadNextTableChunk", "loadAllTableRows", "plotSampleStatus", "loadMorePlotRows", "plotType", "plotSeries", "addPlotSeries", "plotXScale", "plotYScale", "plotYScaleField", "plotColorMap", "plotColorMapField", "symlogField", "symlogThreshold", "renderPlot", "plotContainer", "tableHead", "tableBody", "headerCards"
 ].map((name) => [name, document.querySelector(`#${elementIds[name] ?? name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`)]));
 
 const state = { fits: null, file: null, selectedIndex: 0, frame: 0, imageHdu: null, table: null, tableRowsLoaded: 0, circleMenuIndex: null, photometryHeader: { exposure: null, zeroPoint: null } };
@@ -262,6 +261,7 @@ function clearPanels() {
 async function loadFile(file) {
   if (!file) return;
   state.file = file;
+  elements.refreshViewer.disabled = true;
   elements.fileStatus.textContent = `Reading ${file.name || "FITS data"}`;
   elements.workbench.hidden = true;
   clearPanels();
@@ -273,12 +273,35 @@ async function loadFile(file) {
     elements.dropZone.hidden = true;
     elements.workbench.hidden = false;
     await selectHdu(state.selectedIndex);
+    elements.refreshViewer.disabled = false;
   } catch (error) {
     state.fits = null;
     elements.dropZone.hidden = false;
     elements.fileStatus.textContent = error.message;
     setStatus(error.message, true);
+    elements.refreshViewer.disabled = true;
   }
+}
+
+function resetViewerSettings() {
+  viewer.resetSettings();
+  elements.levelPreset.value = "99";
+  elements.photometryEnabled.checked = false;
+  [elements.photometryRadius, elements.photometryAnnulusInner, elements.photometryAnnulusOuter]
+    .forEach((control) => { control.value = control.defaultValue; });
+  syncPhotometryVisibility();
+  elements.plotXScale.value = "linear";
+  elements.plotYScale.value = "linear";
+  elements.plotColorMap.value = "viridis";
+  elements.symlogThreshold.value = elements.symlogThreshold.defaultValue;
+  hideCircleContextMenu();
+}
+
+async function refreshViewer() {
+  if (!state.file || !state.fits) return;
+  const file = state.file;
+  resetViewerSettings();
+  await loadFile(file);
 }
 
 async function selectHdu(index) {
@@ -685,6 +708,7 @@ async function setTheme(theme) {
 function pickFile() { elements.fileInput.click(); }
 
 elements.openFile.addEventListener("click", pickFile);
+elements.refreshViewer.addEventListener("click", refreshViewer);
 elements.dropZone.addEventListener("click", pickFile);
 elements.dropZone.addEventListener("keydown", (event) => {
   if (event.key === "Enter" || event.key === " ") { event.preventDefault(); pickFile(); }

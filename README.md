@@ -11,6 +11,7 @@ Browser-native FITS image and table application for GitHub Pages, built on [FITS
 - Multi-circle catalogue with pixel/WCS centres, per-circle or batch intensity-weighted centroiding, and a right-click action menu.
 - Binary and ASCII table viewer with progressive chunk loading or warned full-table loading, plus progressively expandable Plotly samples for scatter plots, 1D histograms, 2D histograms, linear/log/symlog axes, and optional scatter coloring.
 - Responsive desktop, tablet, and mobile layouts, including top-positioned HDU navigation on narrow screens.
+- One-click viewer refresh restores default analysis and display settings while retaining the loaded FITS file.
 - Light/dark theme toggle; visual language follows the FITS.js inspector teal/coral palette.
 
 ## Dependency

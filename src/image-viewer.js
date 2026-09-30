@@ -353,6 +353,16 @@ export class ImageViewer {
     this.histogramContext.clearRect(0, 0, this.histogramCanvas.width, this.histogramCanvas.height);
   }
 
+  resetSettings() {
+    this.state = this.defaultState();
+    this.pointer = null;
+    this.drag = null;
+    this.canvas.dataset.mode = this.state.regionMode;
+    this.updateColorLut();
+    this.emitState();
+    this.queueRender();
+  }
+
   buildSample(values) {
     const sample = [];
     const stride = Math.max(1, Math.floor(values.length / 50000));
