@@ -522,7 +522,6 @@ h2 {
   touch-action: none;
 }
 
-#image-canvas[data-mode="box"],
 #image-canvas[data-mode="circle"] {
   cursor: crosshair;
 }

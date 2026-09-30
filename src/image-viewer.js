@@ -524,6 +524,7 @@ export class ImageViewer {
   }
 
   setRegionMode(mode) {
+    if (!["pan", "circle"].includes(mode)) return;
     this.state.regionMode = mode;
     this.canvas.dataset.mode = mode;
     this.emitState();

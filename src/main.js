@@ -57,7 +57,6 @@ app.innerHTML = `
             </div>
             <div class="tool-group region-tools" aria-label="Region tools">
               <button class="tool-button is-active" type="button" data-region-mode="pan" aria-label="Pan image" title="Pan image"><span data-icon="move"></span></button>
-              <button class="tool-button" type="button" data-region-mode="box" aria-label="Draw box region" title="Draw box region"><span data-icon="square"></span></button>
               <button class="tool-button" type="button" data-region-mode="circle" aria-label="Draw circle region" title="Draw circle region"><span data-icon="circle"></span></button>
               <button class="tool-button" type="button" data-viewer-action="clear-regions" aria-label="Clear regions" title="Clear regions"><span data-icon="trash"></span></button>
             </div>
