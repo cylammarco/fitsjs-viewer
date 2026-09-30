@@ -76,9 +76,17 @@ app.innerHTML = `
             <aside class="display-panel" aria-label="Image display controls">
               <div class="control-section">
                 <div class="section-label"><span data-icon="palette"></span><span>Display</span></div>
-                <label class="control-field" for="palette-select">Palette<select id="palette-select"><option value="gray">Gray</option><option value="heat">Heat</option><option value="viridis">Viridis</option><option value="cividis">Cividis</option><option value="magma">Magma</option><option value="ice">Ice</option></select></label>
+                <label class="control-field" for="palette-select">Palette<select id="palette-select"><option value="gray">Gray</option><option value="heat">Heat</option><option value="viridis">Viridis</option><option value="cividis">Cividis</option><option value="plasma">Plasma</option><option value="inferno">Inferno</option><option value="magma">Magma</option><option value="cubehelix">Cubehelix</option><option value="blueorange">Blue–orange</option><option value="ice">Ice</option></select></label>
                 <label class="control-field" for="stretch-select">Stretch<select id="stretch-select"><option value="linear">Linear</option><option value="log">Log</option><option value="sqrt">Sqrt</option><option value="square">Square</option><option value="asinh" selected>Asinh</option><option value="sinh">Sinh</option><option value="histeq">Histogram equalisation</option></select></label>
                 <label class="toggle-line" for="invert-toggle">Invert<input id="invert-toggle" type="checkbox"></label>
+              </div>
+              <div class="control-section">
+                <div class="section-label"><span data-icon="grid"></span><span>Image processing</span></div>
+                <label class="control-field" for="image-binning">Binning<select id="image-binning"><option value="1">1 × 1</option><option value="2">2 × 2</option><option value="4">4 × 4</option><option value="8">8 × 8</option></select></label>
+                <label class="control-field" for="image-filter">Filter<select id="image-filter"><option value="none">None</option><option value="gaussian">Gaussian</option><option value="median">Median</option></select></label>
+                <label class="control-field" for="image-filter-size">Size / σ (px)<input id="image-filter-size" type="number" min="0.2" max="15" step="0.2" value="1"></label>
+                <button id="apply-image-processing" class="inline-button" type="button">Apply processing</button>
+                <p class="control-hint">Binning averages pixels. Gaussian size is σ; median size is rounded to an odd window.</p>
               </div>
               <div class="control-section">
                 <div class="section-label"><span data-icon="bar-chart"></span><span>Levels</span></div>
@@ -120,7 +128,13 @@ app.innerHTML = `
                 <p class="control-hint">Drag the centre cross to move the aperture. Drag any circle to resize its aperture or annulus radius.</p>
                 </div>
               </div>
-              <div class="control-section region-summary"><div class="section-label"><span data-icon="grid"></span><span>Regions</span></div><output id="region-readout">0 regions</output></div>
+              <div class="control-section region-summary">
+                <div class="section-label"><span data-icon="grid"></span><span>Circle catalogue</span></div>
+                <output id="region-readout">0 regions</output>
+                <button id="centroid-all-circles" class="inline-button" type="button">Centroid all circles</button>
+                <div class="circle-table-scroll"><table class="circle-table"><thead><tr><th>#</th><th>X</th><th>Y</th><th>RA</th><th>Dec</th><th></th></tr></thead><tbody id="circle-table-body"></tbody></table></div>
+                <p class="control-hint">Draw multiple circles with the circle tool. Right-click a circle for single/all centroid actions.</p>
+              </div>
             </aside>
           </div>
           <div id="image-meta" class="image-meta"></div>
@@ -141,11 +155,13 @@ app.innerHTML = `
             <div id="plot-container" class="plot-container" aria-label="Plotly chart"></div>
           </div>
           <div class="table-scroll"><table><thead id="table-head"></thead><tbody id="table-body"></tbody></table></div>
+          <div class="table-load-controls"><output id="table-load-status"></output><div><button id="load-next-table-chunk" class="inline-button compact-button" type="button">Load next 80 rows</button><button id="load-all-table-rows" class="inline-button compact-button danger-button" type="button">Load all rows…</button></div></div>
         </section>
 
         <details class="header-panel"><summary>Header cards</summary><pre id="header-cards"></pre></details>
       </section>
     </main>
+    <div id="circle-context-menu" class="context-menu" hidden><button type="button" data-circle-action="centroid-one">Centroid this circle</button><button type="button" data-circle-action="centroid-all">Centroid all circles</button><button type="button" data-circle-action="remove">Remove this circle</button></div>
   </div>
 `;
 
@@ -160,17 +176,18 @@ const elementIds = {
 };
 
 const elements = Object.fromEntries([
-  "fileInput", "fileStatus", "openFile", "themeToggle", "themeIcon", "dropZone", "workbench", "hduCount", "hduList", "detailKind", "detailTitle", "detailMeta", "viewerStatus", "imageWorkspace", "tableWorkspace", "imageCanvas", "histogramCanvas", "probeReadout", "zoomReadout", "frameInput", "frameTotal", "palette", "stretch", "invert", "blackLevel", "whiteLevel", "percentileLow", "percentileHigh", "levelPreset", "autoLevels", "photometryEnabled", "photometryControls", "photometryX", "photometryY", "photometryUsePointer", "photometryRadius", "photometryAnnulusInner", "photometryAnnulusOuter", "photometryHeaderValues", "photometryExposure", "photometryZeropoint", "photometryUseHeader", "measurePhotometry", "photometryResult", "regionReadout", "imageMeta", "tableMeta", "plotSampleStatus", "plotType", "plotSeries", "addPlotSeries", "plotXScale", "plotYScale", "plotYScaleField", "plotColorMap", "plotColorMapField", "symlogField", "symlogThreshold", "renderPlot", "plotContainer", "tableHead", "tableBody", "headerCards"
+  "fileInput", "fileStatus", "openFile", "themeToggle", "themeIcon", "dropZone", "workbench", "hduCount", "hduList", "detailKind", "detailTitle", "detailMeta", "viewerStatus", "imageWorkspace", "tableWorkspace", "imageCanvas", "histogramCanvas", "probeReadout", "zoomReadout", "frameInput", "frameTotal", "palette", "stretch", "invert", "imageBinning", "imageFilter", "imageFilterSize", "applyImageProcessing", "blackLevel", "whiteLevel", "percentileLow", "percentileHigh", "levelPreset", "autoLevels", "photometryEnabled", "photometryControls", "photometryX", "photometryY", "photometryUsePointer", "photometryRadius", "photometryAnnulusInner", "photometryAnnulusOuter", "photometryHeaderValues", "photometryExposure", "photometryZeropoint", "photometryUseHeader", "measurePhotometry", "photometryResult", "regionReadout", "centroidAllCircles", "circleTableBody", "circleContextMenu", "imageMeta", "tableMeta", "tableLoadStatus", "loadNextTableChunk", "loadAllTableRows", "plotSampleStatus", "plotType", "plotSeries", "addPlotSeries", "plotXScale", "plotYScale", "plotYScaleField", "plotColorMap", "plotColorMapField", "symlogField", "symlogThreshold", "renderPlot", "plotContainer", "tableHead", "tableBody", "headerCards"
 ].map((name) => [name, document.querySelector(`#${elementIds[name] ?? name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`)]));
 
-const state = { fits: null, file: null, selectedIndex: 0, frame: 0, imageHdu: null, photometryHeader: { exposure: null, zeroPoint: null } };
+const state = { fits: null, file: null, selectedIndex: 0, frame: 0, imageHdu: null, table: null, tableRowsLoaded: 0, circleMenuIndex: null, photometryHeader: { exposure: null, zeroPoint: null } };
 const viewer = new ImageViewer({
   canvas: elements.imageCanvas,
   histogramCanvas: elements.histogramCanvas,
   onProbe: renderProbe,
   onStateChange: syncImageControls,
-  onRegionChange: (regions) => { elements.regionReadout.textContent = `${regions.length} ${regions.length === 1 ? "region" : "regions"}`; },
-  onApertureChange: syncApertureControls
+  onRegionChange: renderCircleCatalogue,
+  onApertureChange: syncApertureControls,
+  onCircleMenu: showCircleContextMenu
 });
 const plotter = new TablePlotter({ element: elements.plotContainer, onStatus: (message) => { elements.plotSampleStatus.textContent = message; } });
 
@@ -236,8 +253,11 @@ function clearPanels() {
   viewer.clear();
   plotter.clear();
   state.imageHdu = null;
+  state.table = null;
+  state.tableRowsLoaded = 0;
   elements.tableHead.replaceChildren();
   elements.tableBody.replaceChildren();
+  elements.circleTableBody.replaceChildren();
 }
 
 async function loadFile(file) {
@@ -297,6 +317,7 @@ async function renderImage(hdu) {
   setStatus(`Reading frame ${state.frame}`);
   const values = await image.readImage({ frame: state.frame });
   viewer.setImage({ values, image, header: hdu.header, frame: state.frame });
+  renderCircleCatalogue([]);
   populatePhotometryControls(hdu.header, image);
   elements.imageMeta.textContent = `${image.width} x ${image.height} | ${image.dimensions.join(" x ")} | ${values.constructor.name} | ${values.length.toLocaleString()} samples`;
   setStatus(`${values.length.toLocaleString()} samples loaded`);
@@ -387,15 +408,50 @@ function measurePhotometry() {
   }
 }
 
-function renderTablePreview(columns, rows) {
-  const headerRow = document.createElement("tr");
-  columns.forEach((column) => {
-    const cell = document.createElement("th");
-    cell.scope = "col";
-    cell.textContent = column.name;
-    headerRow.append(cell);
+function renderCircleCatalogue(regions = viewer.getState().regions) {
+  const circles = viewer.circleCatalog();
+  elements.regionReadout.textContent = `${circles.length} ${circles.length === 1 ? "circle" : "circles"} (${regions.length} total regions)`;
+  elements.centroidAllCircles.disabled = circles.length === 0;
+  const fragment = document.createDocumentFragment();
+  circles.forEach((circle, displayIndex) => {
+    const row = document.createElement("tr");
+    const values = [displayIndex + 1, formatNumber(circle.x, 7), formatNumber(circle.y, 7), circle.ra === null ? "—" : formatNumber(circle.ra, 8), circle.dec === null ? "—" : formatNumber(circle.dec, 8)];
+    values.forEach((value) => { const cell = document.createElement("td"); cell.textContent = value; row.append(cell); });
+    const actions = document.createElement("td");
+    const centroid = document.createElement("button"); centroid.type = "button"; centroid.textContent = "Centroid"; centroid.addEventListener("click", () => { viewer.centroidCircle(circle.index); renderCircleCatalogue(); });
+    actions.append(centroid); row.append(actions); fragment.append(row);
   });
-  elements.tableHead.replaceChildren(headerRow);
+  elements.circleTableBody.replaceChildren(fragment);
+}
+
+function centroidAllCircles() {
+  viewer.centroidAllCircles();
+  renderCircleCatalogue();
+}
+
+function showCircleContextMenu({ index, clientX, clientY }) {
+  state.circleMenuIndex = index;
+  elements.circleContextMenu.hidden = false;
+  elements.circleContextMenu.style.left = `${Math.min(clientX, window.innerWidth - 190)}px`;
+  elements.circleContextMenu.style.top = `${Math.min(clientY, window.innerHeight - 130)}px`;
+}
+
+function hideCircleContextMenu() {
+  elements.circleContextMenu.hidden = true;
+  state.circleMenuIndex = null;
+}
+
+function renderTablePreview(columns, rows, append = false) {
+  if (!append) {
+    const headerRow = document.createElement("tr");
+    columns.forEach((column) => {
+      const cell = document.createElement("th");
+      cell.scope = "col";
+      cell.textContent = column.name;
+      headerRow.append(cell);
+    });
+    elements.tableHead.replaceChildren(headerRow);
+  }
   const fragment = document.createDocumentFragment();
   rows.forEach((row) => {
     const rowElement = document.createElement("tr");
@@ -407,15 +463,48 @@ function renderTablePreview(columns, rows) {
     });
     fragment.append(rowElement);
   });
-  elements.tableBody.replaceChildren(fragment);
+  if (append) elements.tableBody.append(fragment);
+  else elements.tableBody.replaceChildren(fragment);
+}
+
+function updateTableLoadControls() {
+  if (!state.table) return;
+  const remaining = Math.max(0, state.table.rowCount - state.tableRowsLoaded);
+  elements.tableLoadStatus.textContent = `${state.tableRowsLoaded.toLocaleString()} of ${state.table.rowCount.toLocaleString()} rows loaded`;
+  elements.loadNextTableChunk.disabled = remaining === 0;
+  elements.loadAllTableRows.disabled = remaining === 0;
+  elements.loadNextTableChunk.textContent = remaining ? `Load next ${Math.min(MAX_TABLE_PREVIEW_ROWS, remaining).toLocaleString()} rows` : "All rows loaded";
+}
+
+async function loadTableRows(count) {
+  if (!state.table || state.tableRowsLoaded >= state.table.rowCount) return;
+  const amount = Math.min(count, state.table.rowCount - state.tableRowsLoaded);
+  elements.loadNextTableChunk.disabled = true;
+  elements.loadAllTableRows.disabled = true;
+  setStatus(`Reading rows ${(state.tableRowsLoaded + 1).toLocaleString()}–${(state.tableRowsLoaded + amount).toLocaleString()}`);
+  const rows = await state.table.readRows({ start: state.tableRowsLoaded, count: amount });
+  renderTablePreview(state.table.columns, rows, state.tableRowsLoaded > 0);
+  state.tableRowsLoaded += rows.length;
+  updateTableLoadControls();
+  setStatus(`${state.tableRowsLoaded.toLocaleString()} table rows loaded`);
+}
+
+async function loadAllTableRows() {
+  if (!state.table) return;
+  const remaining = state.table.rowCount - state.tableRowsLoaded;
+  if (!remaining) return;
+  const confirmed = window.confirm(`Load all ${remaining.toLocaleString()} remaining rows? This can exhaust memory and crash or freeze the browser for a large FITS table.`);
+  if (!confirmed) return;
+  try { await loadTableRows(remaining); } catch (error) { setStatus(error.message, true); updateTableLoadControls(); }
 }
 
 async function renderTable(hdu) {
   const table = hdu.data;
+  state.table = table;
+  state.tableRowsLoaded = 0;
   const previewCount = Math.min(table.rowCount, MAX_TABLE_PREVIEW_ROWS);
   setStatus(`Reading ${previewCount.toLocaleString()} preview rows`);
-  const rows = await table.readRows({ count: previewCount });
-  renderTablePreview(table.columns, rows);
+  await loadTableRows(previewCount);
   elements.tableMeta.textContent = `${table.columns.length} columns | ${table.rowCount.toLocaleString()} rows`;
   setStatus(`${table.columns.length} columns | ${table.rowCount.toLocaleString()} rows`);
   const model = await plotter.setTable(table);
@@ -527,7 +616,7 @@ function renderProbe(probe) {
     elements.probeReadout.textContent = "Move over image for pixel values";
     return;
   }
-  const pixel = `x ${probe.x + 1}  y ${probe.y + 1}  value ${formatValue(probe.value)}`;
+  const pixel = `x ${formatNumber(probe.x, 7)}  y ${formatNumber(probe.y, 7)}  value ${formatValue(probe.value)}`;
   const world = probe.world ? ` | RA ${formatNumber(probe.world.ra)}  Dec ${formatNumber(probe.world.dec)}` : "";
   elements.probeReadout.textContent = `${pixel}${world}`;
 }
@@ -538,6 +627,9 @@ function syncImageControls(viewState) {
   elements.palette.value = viewState.palette;
   elements.stretch.value = viewState.stretch;
   elements.invert.checked = viewState.invert;
+  elements.imageBinning.value = String(viewState.binning);
+  elements.imageFilter.value = viewState.filter;
+  elements.imageFilterSize.value = viewState.filterSize;
   elements.blackLevel.value = formatNumber(viewState.black, 7);
   elements.whiteLevel.value = formatNumber(viewState.white, 7);
   elements.percentileLow.value = viewState.percentileLow;
@@ -605,6 +697,12 @@ document.querySelectorAll("[data-region-mode]").forEach((button) => button.addEv
 elements.palette.addEventListener("change", () => viewer.setDisplayOption("palette", elements.palette.value));
 elements.stretch.addEventListener("change", () => viewer.setDisplayOption("stretch", elements.stretch.value));
 elements.invert.addEventListener("change", () => viewer.setDisplayOption("invert", elements.invert.checked));
+elements.applyImageProcessing.addEventListener("click", () => {
+  setStatus("Applying image processing");
+  viewer.setProcessingOptions({ binning: elements.imageBinning.value, filter: elements.imageFilter.value, filterSize: elements.imageFilterSize.value });
+  renderCircleCatalogue();
+  setStatus(`Viewing ${elements.imageBinning.value}× binning with ${elements.imageFilter.value} filter`);
+});
 elements.blackLevel.addEventListener("change", () => viewer.setLevels(elements.blackLevel.value, elements.whiteLevel.value));
 elements.whiteLevel.addEventListener("change", () => viewer.setLevels(elements.blackLevel.value, elements.whiteLevel.value));
 elements.autoLevels.addEventListener("click", () => viewer.autoLevels(elements.percentileLow.value, elements.percentileHigh.value));
@@ -622,6 +720,18 @@ elements.photometryUsePointer.addEventListener("click", usePhotometryPointer);
 elements.photometryUseHeader.addEventListener("click", () => { restorePhotometryHeaderValues(); updatePhotometryOverlay(); });
 elements.measurePhotometry.addEventListener("click", measurePhotometry);
 elements.photometryEnabled.addEventListener("change", syncPhotometryVisibility);
+elements.centroidAllCircles.addEventListener("click", centroidAllCircles);
+elements.loadNextTableChunk.addEventListener("click", async () => { try { await loadTableRows(MAX_TABLE_PREVIEW_ROWS); } catch (error) { setStatus(error.message, true); updateTableLoadControls(); } });
+elements.loadAllTableRows.addEventListener("click", loadAllTableRows);
+elements.circleContextMenu.addEventListener("click", (event) => {
+  const action = event.target.closest("[data-circle-action]")?.dataset.circleAction;
+  if (!action) return;
+  if (action === "centroid-one" && state.circleMenuIndex !== null) viewer.centroidCircle(state.circleMenuIndex);
+  if (action === "centroid-all") viewer.centroidAllCircles();
+  if (action === "remove" && state.circleMenuIndex !== null) viewer.removeRegion(state.circleMenuIndex);
+  renderCircleCatalogue(); hideCircleContextMenu();
+});
+document.addEventListener("pointerdown", (event) => { if (!elements.circleContextMenu.hidden && !elements.circleContextMenu.contains(event.target)) hideCircleContextMenu(); });
 elements.frameInput.addEventListener("change", async () => {
   if (!state.imageHdu) return;
   const frame = Number(elements.frameInput.value);

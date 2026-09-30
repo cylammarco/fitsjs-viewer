@@ -3,6 +3,10 @@ const PALETTES = {
   heat: [[0, [8, 14, 24]], [0.28, [4, 66, 96]], [0.55, [27, 167, 145]], [0.78, [243, 179, 68]], [1, [255, 249, 225]]],
   viridis: [[0, [68, 1, 84]], [0.25, [59, 82, 139]], [0.5, [33, 145, 140]], [0.75, [94, 201, 97]], [1, [253, 231, 37]]],
   cividis: [[0, [0, 32, 76]], [0.25, [40, 76, 112]], [0.5, [101, 114, 112]], [0.75, [170, 153, 90]], [1, [255, 233, 69]]],
+  plasma: [[0, [13, 8, 135]], [0.25, [126, 3, 168]], [0.5, [204, 71, 120]], [0.75, [248, 149, 64]], [1, [240, 249, 33]]],
+  inferno: [[0, [0, 0, 4]], [0.25, [87, 16, 110]], [0.5, [188, 55, 84]], [0.75, [249, 142, 9]], [1, [252, 255, 164]]],
+  cubehelix: [[0, [0, 0, 0]], [0.25, [22, 83, 76]], [0.5, [160, 121, 73]], [0.75, [191, 181, 233]], [1, [255, 255, 255]]],
+  blueorange: [[0, [33, 102, 172]], [0.25, [103, 169, 207]], [0.5, [247, 247, 247]], [0.75, [239, 138, 98]], [1, [178, 24, 43]]],
   magma: [[0, [0, 0, 4]], [0.25, [79, 18, 123]], [0.5, [182, 55, 121]], [0.75, [248, 142, 82]], [1, [252, 253, 191]]],
   ice: [[0, [5, 18, 39]], [0.25, [15, 64, 95]], [0.5, [50, 140, 164]], [0.75, [175, 222, 209]], [1, [248, 254, 232]]]
 };
@@ -14,6 +18,7 @@ function clamp(value, minimum, maximum) {
 }
 
 function finiteNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
 }
@@ -75,8 +80,77 @@ function interpolatePalette(stops, position) {
   return left.map((channel, index) => Math.round(channel + (right[index] - channel) * ratio));
 }
 
+function binnedValues(values, width, height, factor) {
+  if (factor <= 1) return { values: Float64Array.from(values, Number), width, height };
+  const outputWidth = Math.ceil(width / factor);
+  const outputHeight = Math.ceil(height / factor);
+  const output = new Float64Array(outputWidth * outputHeight);
+  for (let outputY = 0; outputY < outputHeight; outputY += 1) {
+    for (let outputX = 0; outputX < outputWidth; outputX += 1) {
+      let sum = 0;
+      let count = 0;
+      for (let y = outputY * factor; y < Math.min(height, (outputY + 1) * factor); y += 1) {
+        for (let x = outputX * factor; x < Math.min(width, (outputX + 1) * factor); x += 1) {
+          const value = finiteNumber(values[y * width + x]);
+          if (value !== null) { sum += value; count += 1; }
+        }
+      }
+      output[outputY * outputWidth + outputX] = count ? sum / count : Number.NaN;
+    }
+  }
+  return { values: output, width: outputWidth, height: outputHeight };
+}
+
+function convolveSeparable(values, width, height, kernel) {
+  const radius = Math.floor(kernel.length / 2);
+  const temporary = new Float64Array(values.length);
+  const output = new Float64Array(values.length);
+  for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {
+    let sum = 0; let weight = 0;
+    for (let offset = -radius; offset <= radius; offset += 1) {
+      const sourceX = clamp(x + offset, 0, width - 1);
+      const value = finiteNumber(values[y * width + sourceX]);
+      if (value !== null) { sum += value * kernel[offset + radius]; weight += kernel[offset + radius]; }
+    }
+    temporary[y * width + x] = weight ? sum / weight : Number.NaN;
+  }
+  for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {
+    let sum = 0; let weight = 0;
+    for (let offset = -radius; offset <= radius; offset += 1) {
+      const sourceY = clamp(y + offset, 0, height - 1);
+      const value = finiteNumber(temporary[sourceY * width + x]);
+      if (value !== null) { sum += value * kernel[offset + radius]; weight += kernel[offset + radius]; }
+    }
+    output[y * width + x] = weight ? sum / weight : Number.NaN;
+  }
+  return output;
+}
+
+function gaussianFilter(values, width, height, sigma) {
+  const radius = Math.max(1, Math.ceil(sigma * 3));
+  const kernel = Array.from({ length: radius * 2 + 1 }, (_, index) => Math.exp(-0.5 * ((index - radius) / sigma) ** 2));
+  return convolveSeparable(values, width, height, kernel);
+}
+
+function medianFilter(values, width, height, size) {
+  const radius = Math.floor(size / 2);
+  const output = new Float64Array(values.length);
+  for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {
+    const neighbourhood = [];
+    for (let dy = -radius; dy <= radius; dy += 1) for (let dx = -radius; dx <= radius; dx += 1) {
+      const sourceX = clamp(x + dx, 0, width - 1);
+      const sourceY = clamp(y + dy, 0, height - 1);
+      const value = finiteNumber(values[sourceY * width + sourceX]);
+      if (value !== null) neighbourhood.push(value);
+    }
+    neighbourhood.sort((left, right) => left - right);
+    output[y * width + x] = neighbourhood.length ? quantile(neighbourhood, 0.5) : Number.NaN;
+  }
+  return output;
+}
+
 export class ImageViewer {
-  constructor({ canvas, histogramCanvas, onProbe, onStateChange, onRegionChange, onApertureChange }) {
+  constructor({ canvas, histogramCanvas, onProbe, onStateChange, onRegionChange, onApertureChange, onCircleMenu }) {
     this.canvas = canvas;
     this.context = canvas.getContext("2d", { alpha: false, willReadFrequently: false });
     this.histogramCanvas = histogramCanvas;
@@ -85,6 +159,7 @@ export class ImageViewer {
     this.onStateChange = onStateChange;
     this.onRegionChange = onRegionChange;
     this.onApertureChange = onApertureChange;
+    this.onCircleMenu = onCircleMenu;
 
     this.image = null;
     this.sample = [];
@@ -117,6 +192,9 @@ export class ImageViewer {
       crosshair: true,
       pixelGrid: false,
       aperture: null,
+      binning: 1,
+      filter: "none",
+      filterSize: 1,
       regionMode: "pan",
       regions: [],
       regionDraft: null,
@@ -128,7 +206,14 @@ export class ImageViewer {
   }
 
   bindEvents() {
-    this.canvas.addEventListener("contextmenu", (event) => event.preventDefault());
+    this.canvas.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      if (!this.image) return;
+      const point = this.eventPoint(event);
+      const source = this.screenToSource(point.x, point.y);
+      const circleIndex = this.circleRegionAt(source);
+      if (circleIndex !== null) this.onCircleMenu?.({ index: circleIndex, clientX: event.clientX, clientY: event.clientY });
+    });
     this.canvas.addEventListener("wheel", (event) => {
       if (!this.image) {
         return;
@@ -232,8 +317,11 @@ export class ImageViewer {
   setImage({ values, image, header, frame = 0 }) {
     this.image = {
       values,
+      originalValues: values,
       width: image.width,
       height: image.height,
+      originalWidth: image.width,
+      originalHeight: image.height,
       header,
       frame,
       type: values.constructor.name
@@ -249,6 +337,9 @@ export class ImageViewer {
     this.state.regions = [];
     this.state.regionDraft = null;
     this.state.aperture = null;
+    this.state.binning = 1;
+    this.state.filter = "none";
+    this.state.filterSize = 1;
     this.autoLevels();
     this.emitState();
     this.queueRender();
@@ -400,6 +491,38 @@ export class ImageViewer {
     this.queueRender();
   }
 
+  setProcessingOptions({ binning = this.state.binning, filter = this.state.filter, filterSize = this.state.filterSize }) {
+    if (!this.image) return;
+    const normalizedBinning = [1, 2, 4, 8].includes(Number(binning)) ? Number(binning) : 1;
+    const normalizedFilter = ["none", "gaussian", "median"].includes(filter) ? filter : "none";
+    const normalizedSize = clamp(Number(filterSize) || 1, 0.2, 15);
+    const binned = binnedValues(this.image.originalValues, this.image.originalWidth, this.image.originalHeight, normalizedBinning);
+    let values = binned.values;
+    if (normalizedFilter === "gaussian") values = gaussianFilter(values, binned.width, binned.height, normalizedSize);
+    if (normalizedFilter === "median") {
+      let windowSize = Math.max(1, Math.round(normalizedSize));
+      if (windowSize % 2 === 0) windowSize += 1;
+      values = medianFilter(values, binned.width, binned.height, Math.min(windowSize, 15));
+    }
+    this.image.values = values;
+    this.image.width = binned.width;
+    this.image.height = binned.height;
+    this.state.binning = normalizedBinning;
+    this.state.filter = normalizedFilter;
+    this.state.filterSize = normalizedSize;
+    this.state.centerX = (binned.width - 1) / 2;
+    this.state.centerY = (binned.height - 1) / 2;
+    this.state.zoom = 1;
+    this.state.regions = [];
+    this.state.regionDraft = null;
+    this.sample = this.buildSample(values);
+    this.statistics = this.calculateStatistics(this.sample);
+    this.autoLevels();
+    this.onRegionChange?.([]);
+    this.emitState();
+    this.queueRender();
+  }
+
   setRegionMode(mode) {
     this.state.regionMode = mode;
     this.canvas.dataset.mode = mode;
@@ -409,6 +532,74 @@ export class ImageViewer {
   clearRegions() {
     this.state.regions = [];
     this.state.regionDraft = null;
+    this.onRegionChange?.(this.state.regions);
+    this.queueRender();
+  }
+
+  circleRegionAt(source) {
+    let match = null;
+    let bestDistance = Number.POSITIVE_INFINITY;
+    this.state.regions.forEach((region, index) => {
+      if (region.shape !== "circle") return;
+      const radius = Math.hypot(region.end.x - region.start.x, region.end.y - region.start.y);
+      const distance = Math.hypot(source.x - region.start.x, source.y - region.start.y);
+      if (distance <= radius && distance < bestDistance) { match = index; bestDistance = distance; }
+    });
+    return match;
+  }
+
+  circleCatalog() {
+    return this.state.regions.flatMap((region, index) => {
+      if (region.shape !== "circle") return [];
+      const fits = this.sourceToFits(region.start.x, region.start.y);
+      const world = this.worldCoordinateAt(region.start.x, region.start.y);
+      return [{ index, x: fits.x, y: fits.y, ra: world?.ra ?? null, dec: world?.dec ?? null, radius: Math.hypot(region.end.x - region.start.x, region.end.y - region.start.y) * this.state.binning }];
+    });
+  }
+
+  centroidCircle(index) {
+    const region = this.state.regions[index];
+    if (!region || region.shape !== "circle" || !this.image) return null;
+    const radius = Math.hypot(region.end.x - region.start.x, region.end.y - region.start.y);
+    const startX = Math.max(0, Math.floor(region.start.x - radius));
+    const endX = Math.min(this.image.width - 1, Math.ceil(region.start.x + radius));
+    const startY = Math.max(0, Math.floor(region.start.y - radius));
+    const endY = Math.min(this.image.height - 1, Math.ceil(region.start.y + radius));
+    const samples = [];
+    for (let y = startY; y <= endY; y += 1) for (let x = startX; x <= endX; x += 1) {
+      if (Math.hypot(x + 0.5 - region.start.x, y + 0.5 - region.start.y) > radius) continue;
+      const value = finiteNumber(this.image.values[y * this.image.width + x]);
+      if (value !== null) samples.push({ x: x + 0.5, y: y + 0.5, value });
+    }
+    if (!samples.length) return null;
+    const sorted = samples.map((sample) => sample.value).sort((left, right) => left - right);
+    const background = quantile(sorted, 0.25);
+    let weightSum = 0; let weightedX = 0; let weightedY = 0;
+    for (const sample of samples) {
+      const weight = Math.max(0, sample.value - background);
+      weightSum += weight; weightedX += sample.x * weight; weightedY += sample.y * weight;
+    }
+    if (weightSum <= 0) return null;
+    const nextX = weightedX / weightSum;
+    const nextY = weightedY / weightSum;
+    const dx = nextX - region.start.x;
+    const dy = nextY - region.start.y;
+    region.start = { x: nextX, y: nextY };
+    region.end = { x: region.end.x + dx, y: region.end.y + dy };
+    this.onRegionChange?.(this.state.regions);
+    this.queueRender();
+    return this.circleCatalog().find((circle) => circle.index === index) ?? null;
+  }
+
+  centroidAllCircles() {
+    const results = [];
+    this.state.regions.forEach((region, index) => { if (region.shape === "circle") results.push(this.centroidCircle(index)); });
+    return results.filter(Boolean);
+  }
+
+  removeRegion(index) {
+    if (index < 0 || index >= this.state.regions.length) return;
+    this.state.regions.splice(index, 1);
     this.onRegionChange?.(this.state.regions);
     this.queueRender();
   }
@@ -839,8 +1030,10 @@ export class ImageViewer {
 
     const regions = [...this.state.regions, ...(this.state.regionDraft ? [this.state.regionDraft] : [])];
     this.context.strokeStyle = regionColor;
+    let circleNumber = 0;
     for (const region of regions) {
-      this.drawRegion(region);
+      this.drawRegion(region, circleNumber);
+      if (region.shape === "circle") circleNumber += 1;
     }
     if (this.state.aperture) this.drawApertureOverlay(this.state.aperture);
     if (this.state.pixelGrid && this.getScale() >= 7) this.drawPixelGrid();
@@ -856,7 +1049,7 @@ export class ImageViewer {
     const colors = getComputedStyle(document.documentElement);
     this.context.save();
     this.context.strokeStyle = colors.getPropertyValue("--photometry-aperture").trim() || "#ffcf5a";
-    this.context.lineWidth = Math.max(1, Math.round((window.devicePixelRatio || 1) * 1.1));
+    this.context.lineWidth = Math.max(3, (window.devicePixelRatio || 1) * 3.3);
     [radius, Math.hypot(innerEdge.x - center.x, innerEdge.y - center.y), Math.hypot(outerEdge.x - center.x, outerEdge.y - center.y)].forEach((value, index) => {
       this.context.setLineDash(index === 0 ? [] : [5, 4]);
       this.context.beginPath(); this.context.arc(center.x, center.y, value, 0, Math.PI * 2); this.context.stroke();
@@ -890,7 +1083,7 @@ export class ImageViewer {
     this.context.restore();
   }
 
-  drawRegion(region) {
+  drawRegion(region, index = 0) {
     if (region.shape === "circle") {
       const center = this.sourceToScreen(region.start.x, region.start.y);
       const edge = this.sourceToScreen(region.end.x, region.end.y);
@@ -898,6 +1091,11 @@ export class ImageViewer {
       this.context.beginPath();
       this.context.arc(center.x, center.y, radius, 0, Math.PI * 2);
       this.context.stroke();
+      this.context.save();
+      this.context.fillStyle = this.context.strokeStyle;
+      this.context.font = `${Math.max(11, 10 * (window.devicePixelRatio || 1))}px DM Mono, monospace`;
+      this.context.fillText(String(index + 1), center.x + radius + 5, center.y - 5);
+      this.context.restore();
       return;
     }
 
@@ -968,15 +1166,24 @@ export class ImageViewer {
       return;
     }
     const value = finiteNumber(this.image.values[pixelY * this.image.width + pixelX]);
+    const fits = this.sourceToFits(pixelX + 0.5, pixelY + 0.5);
     this.onProbe?.({
-      x: pixelX,
-      y: pixelY,
+      x: fits.x,
+      y: fits.y,
       value,
       world: this.worldCoordinate(pixelX, pixelY)
     });
   }
 
   worldCoordinate(x, y) {
+    return this.worldCoordinateAt(x + 0.5, y + 0.5);
+  }
+
+  sourceToFits(x, y) {
+    return { x: x * this.state.binning + 0.5, y: y * this.state.binning + 0.5 };
+  }
+
+  worldCoordinateAt(x, y) {
     const header = this.image?.header;
     if (!header) {
       return null;
@@ -993,8 +1200,9 @@ export class ImageViewer {
     if (cd11 === null || cd22 === null) {
       return null;
     }
-    const deltaX = x + 1 - crpix1;
-    const deltaY = y + 1 - crpix2;
+    const fits = this.sourceToFits(x, y);
+    const deltaX = fits.x - crpix1;
+    const deltaY = fits.y - crpix2;
     return {
       ra: crval1 + cd11 * deltaX + cd12 * deltaY,
       dec: crval2 + cd21 * deltaX + cd22 * deltaY

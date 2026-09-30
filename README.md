@@ -7,8 +7,10 @@ Browser-native FITS image and table application for GitHub Pages, built on [FITS
 ## Features
 
 - Drag/drop or choose local FITS files with multi-HDU navigation and raw header cards.
-- Image/cube viewer with pan, zoom, frame selection, rotation, flips, crosshair pixel/WCS probe, box/circle regions, PNG export, color maps, linear/log/sqrt/asinh stretches, percentile levels, histogram, and basic circular-aperture photometry with a median sky annulus. Exposure time and magnitude zeropoint are read from common FITS header keywords and remain editable.
-- Binary and ASCII table preview with Plotly scatter plots, 1D histograms, 2D histograms, linear/log/symlog axes, optional scatter coloring, and configurable sample limits.
+- Image/cube viewer with pan, zoom, frame selection, rotation, flips, crosshair pixel/WCS probe, box/circle regions, PNG export, ten colour maps, linear/log/sqrt/asinh stretches, percentile levels, histogram, configurable binning, Gaussian/median filtering, and basic circular-aperture photometry with a median sky annulus. Exposure time and magnitude zeropoint are read from common FITS header keywords and remain editable.
+- Multi-circle catalogue with pixel/WCS centres, per-circle or batch intensity-weighted centroiding, and a right-click action menu.
+- Binary and ASCII table viewer with progressive chunk loading or warned full-table loading, plus Plotly scatter plots, 1D histograms, 2D histograms, linear/log/symlog axes, optional scatter coloring, and configurable plot sample limits.
+- Responsive desktop, tablet, and mobile layouts, including top-positioned HDU navigation on narrow screens.
 - Light/dark theme toggle; visual language follows the FITS.js inspector teal/coral palette.
 
 ## Dependency
