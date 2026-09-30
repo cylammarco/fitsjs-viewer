@@ -141,7 +141,7 @@ app.innerHTML = `
         </section>
 
         <section id="table-workspace" class="table-workspace" hidden>
-          <div class="table-summary"><div><p class="eyebrow">Table preview</p><strong id="table-meta"></strong></div><output id="plot-sample-status" class="sample-status"></output></div>
+          <div class="table-summary"><div><p class="eyebrow">Table preview</p><strong id="table-meta"></strong></div><div class="plot-sample-actions"><output id="plot-sample-status" class="sample-status"></output><button id="load-more-plot-rows" class="inline-button compact-button" type="button">Load more for Plotly</button></div></div>
           <div class="plot-workspace">
             <div class="plot-controls" aria-label="Plot controls">
               <label class="control-field" for="plot-type">Plot<select id="plot-type"><option value="scatter">Scatter</option><option value="histogram">Histogram 1D</option><option value="histogram2d">Histogram 2D</option></select></label>
@@ -176,7 +176,7 @@ const elementIds = {
 };
 
 const elements = Object.fromEntries([
-  "fileInput", "fileStatus", "openFile", "themeToggle", "themeIcon", "dropZone", "workbench", "hduCount", "hduList", "detailKind", "detailTitle", "detailMeta", "viewerStatus", "imageWorkspace", "tableWorkspace", "imageCanvas", "histogramCanvas", "probeReadout", "zoomReadout", "frameInput", "frameTotal", "palette", "stretch", "invert", "imageBinning", "imageFilter", "imageFilterSize", "applyImageProcessing", "blackLevel", "whiteLevel", "percentileLow", "percentileHigh", "levelPreset", "autoLevels", "photometryEnabled", "photometryControls", "photometryX", "photometryY", "photometryUsePointer", "photometryRadius", "photometryAnnulusInner", "photometryAnnulusOuter", "photometryHeaderValues", "photometryExposure", "photometryZeropoint", "photometryUseHeader", "measurePhotometry", "photometryResult", "regionReadout", "centroidAllCircles", "circleTableBody", "circleContextMenu", "imageMeta", "tableMeta", "tableLoadStatus", "loadNextTableChunk", "loadAllTableRows", "plotSampleStatus", "plotType", "plotSeries", "addPlotSeries", "plotXScale", "plotYScale", "plotYScaleField", "plotColorMap", "plotColorMapField", "symlogField", "symlogThreshold", "renderPlot", "plotContainer", "tableHead", "tableBody", "headerCards"
+  "fileInput", "fileStatus", "openFile", "themeToggle", "themeIcon", "dropZone", "workbench", "hduCount", "hduList", "detailKind", "detailTitle", "detailMeta", "viewerStatus", "imageWorkspace", "tableWorkspace", "imageCanvas", "histogramCanvas", "probeReadout", "zoomReadout", "frameInput", "frameTotal", "palette", "stretch", "invert", "imageBinning", "imageFilter", "imageFilterSize", "applyImageProcessing", "blackLevel", "whiteLevel", "percentileLow", "percentileHigh", "levelPreset", "autoLevels", "photometryEnabled", "photometryControls", "photometryX", "photometryY", "photometryUsePointer", "photometryRadius", "photometryAnnulusInner", "photometryAnnulusOuter", "photometryHeaderValues", "photometryExposure", "photometryZeropoint", "photometryUseHeader", "measurePhotometry", "photometryResult", "regionReadout", "centroidAllCircles", "circleTableBody", "circleContextMenu", "imageMeta", "tableMeta", "tableLoadStatus", "loadNextTableChunk", "loadAllTableRows", "plotSampleStatus", "loadMorePlotRows", "plotType", "plotSeries", "addPlotSeries", "plotXScale", "plotYScale", "plotYScaleField", "plotColorMap", "plotColorMapField", "symlogField", "symlogThreshold", "renderPlot", "plotContainer", "tableHead", "tableBody", "headerCards"
 ].map((name) => [name, document.querySelector(`#${elementIds[name] ?? name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`)]));
 
 const state = { fits: null, file: null, selectedIndex: 0, frame: 0, imageHdu: null, table: null, tableRowsLoaded: 0, circleMenuIndex: null, photometryHeader: { exposure: null, zeroPoint: null } };
@@ -526,8 +526,34 @@ function populatePlotControls(model) {
   elements.plotType.value = model.columns.length > 1 ? "scatter" : "histogram";
   elements.plotSeries.replaceChildren();
   addPlotSeries();
-  elements.plotSampleStatus.textContent = `${model.loadedRows.toLocaleString()} of ${model.totalRows.toLocaleString()} rows sampled for Plotly`;
+  updatePlotLoadControls(model);
   syncPlotControls();
+}
+
+function updatePlotLoadControls(model = plotter.getModel()) {
+  const remaining = Math.max(0, model.totalRows - model.loadedRows);
+  elements.plotSampleStatus.textContent = `${model.loadedRows.toLocaleString()} of ${model.totalRows.toLocaleString()} rows sampled for Plotly`;
+  elements.loadMorePlotRows.disabled = remaining === 0 || model.numericColumnCount === 0;
+  elements.loadMorePlotRows.textContent = remaining
+    ? `Load next ${Math.min(MAX_PLOT_ROWS, remaining).toLocaleString()} plot rows`
+    : "All rows loaded for Plotly";
+}
+
+async function loadMorePlotRows() {
+  elements.loadMorePlotRows.disabled = true;
+  try {
+    const model = await plotter.loadMoreRows();
+    const availableColumns = model.columns.map((column) => column.name).join("\n");
+    const selectableColumns = [...elements.plotSeries.querySelector(".series-x")?.options ?? []].map((option) => option.value).join("\n");
+    if (availableColumns !== selectableColumns) populatePlotControls(model);
+    else updatePlotLoadControls(model);
+    if (model.columns.length) await renderPlot();
+  } catch (error) {
+    elements.plotSampleStatus.textContent = error.message;
+  } finally {
+    const model = plotter.getModel();
+    elements.loadMorePlotRows.disabled = model.loadedRows >= model.totalRows || model.numericColumnCount === 0;
+  }
 }
 
 function buildSeriesSelect(label, className, columns, includeNone = false) {
@@ -751,6 +777,7 @@ elements.frameInput.addEventListener("change", async () => {
 }));
 elements.addPlotSeries.addEventListener("click", () => { addPlotSeries(); renderPlot(); });
 elements.renderPlot.addEventListener("click", renderPlot);
+elements.loadMorePlotRows.addEventListener("click", loadMorePlotRows);
 document.addEventListener("keydown", (event) => {
   if (!state.imageHdu || event.target.matches("input, select, textarea")) return;
   if (event.key === "+" || event.key === "=") viewer.zoomBy(1.3);

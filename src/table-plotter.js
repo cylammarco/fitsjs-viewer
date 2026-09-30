@@ -82,6 +82,7 @@ export class TablePlotter {
     this.onStatus = onStatus;
     this.table = null;
     this.columns = [];
+    this.numericColumns = [];
     this.values = new Map();
     this.loadedRows = 0;
     this.lastOptions = null;
@@ -92,27 +93,42 @@ export class TablePlotter {
   async setTable(table) {
     this.table = table;
     this.lastOptions = null;
+    this.loadedRows = 0;
+    this.columns = [];
+    this.numericColumns = table.columns.filter((column) => NUMERIC_TYPES.has(column.type));
     this.values.clear();
-    const candidates = table.columns.filter((column) => NUMERIC_TYPES.has(column.type));
-    if (!candidates.length) {
-      this.columns = [];
+    if (!this.numericColumns.length) {
       (await getPlotly()).purge(this.element);
       return this.getModel();
     }
-    const count = Math.min(table.rowCount, MAX_PLOT_ROWS);
-    this.onStatus?.(`Sampling ${count.toLocaleString()} of ${table.rowCount.toLocaleString()} rows for plots`);
-    const rows = await table.readRows({ count, columns: candidates.map((column) => column.name) });
-    this.loadedRows = rows.length;
-    this.columns = candidates.filter((column) => {
-      const values = rows.map((row) => numericValue(row[column.name]));
-      this.values.set(column.name, values);
-      return values.filter((value) => value !== null).length > 1;
+    this.numericColumns.forEach((column) => this.values.set(column.name, []));
+    return this.loadMoreRows();
+  }
+
+  async loadMoreRows(count = MAX_PLOT_ROWS) {
+    if (!this.table || !this.numericColumns.length || this.loadedRows >= this.table.rowCount) return this.getModel();
+    const amount = Math.min(Math.max(1, Number(count) || MAX_PLOT_ROWS), this.table.rowCount - this.loadedRows);
+    const start = this.loadedRows;
+    this.onStatus?.(`Sampling rows ${(start + 1).toLocaleString()}–${(start + amount).toLocaleString()} for Plotly`);
+    const rows = await this.table.readRows({ start, count: amount, columns: this.numericColumns.map((column) => column.name) });
+    this.numericColumns.forEach((column) => {
+      const values = this.values.get(column.name);
+      rows.forEach((row) => values.push(numericValue(row[column.name])));
     });
+    this.loadedRows += rows.length;
+    this.columns = this.numericColumns.filter((column) => this.values.get(column.name).filter((value) => value !== null).length > 1);
     this.onStatus?.(this.columns.length ? `Plot sample: ${this.loadedRows.toLocaleString()} rows` : "No numeric table columns found");
     return this.getModel();
   }
 
-  getModel() { return { columns: this.columns, loadedRows: this.loadedRows, totalRows: this.table?.rowCount ?? 0 }; }
+  getModel() {
+    return {
+      columns: this.columns,
+      numericColumnCount: this.numericColumns.length,
+      loadedRows: this.loadedRows,
+      totalRows: this.table?.rowCount ?? 0
+    };
+  }
 
   recordsFor(series, xScale, yScale, threshold, withY) {
     const xRaw = this.requireValues(series.xColumn);
@@ -204,7 +220,7 @@ export class TablePlotter {
 
   refreshTheme() { return this.lastOptions ? this.plot(this.lastOptions) : Promise.resolve(); }
   clear() {
-    this.table = null; this.columns = []; this.values.clear(); this.loadedRows = 0; this.lastOptions = null;
+    this.table = null; this.columns = []; this.numericColumns = []; this.values.clear(); this.loadedRows = 0; this.lastOptions = null;
     plotlyPromise?.then((plotly) => plotly.purge(this.element));
   }
   requireValues(column) {

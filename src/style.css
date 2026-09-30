@@ -773,6 +773,17 @@ input[type="checkbox"] {
   text-align: right;
 }
 
+.plot-sample-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.plot-sample-actions .inline-button {
+  flex: 0 0 auto;
+}
+
 .plot-workspace {
   border: 1px solid var(--line-strong);
   background: var(--surface-strong);
@@ -1134,6 +1145,14 @@ tbody tr:nth-child(even) {
     align-items: start;
     flex-direction: column;
   }
+
+  .plot-sample-actions {
+    width: 100%;
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .plot-sample-actions .compact-button { width: 100%; }
 
   .sample-status {
     text-align: left;
