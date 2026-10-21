@@ -11,7 +11,7 @@
     "check": "npm run build"
   },
   "devDependencies": {
-    "vite": "^8.3.0"
+    "vite": "^8.3.3"
   },
   "dependencies": {
     "fitsjs": "https://codeload.github.com/cylammarco/fitsjs/tar.gz/40f581c7a0c2024063f9dda22f72ed12e559312d",
